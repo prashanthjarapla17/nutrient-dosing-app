@@ -25,8 +25,8 @@ from reportlab.platypus import (
 from scipy.optimize import lsq_linear, minimize
 
 st.set_page_config(
-    page_title="Soilless Crop Intelligence",
-    page_icon="🌿",
+    page_title="Soilless Nutri Master",
+    page_icon="🌱",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -59,11 +59,36 @@ def apply_dashboard_theme():
                 radial-gradient(circle at 4% 18%, rgba(17,133,104,.10), transparent 22rem),
                 #f5faf8;
         }
+        /* Keep Streamlit's header available because it owns the mobile
+           workflow/sidebar toggle, but remove its branding and action tools. */
         [data-testid="stHeader"] {
             background: rgba(245,250,248,.86);
             backdrop-filter: blur(10px);
         }
-        [data-testid="stToolbar"] { right: 1rem; }
+        [data-testid="stToolbar"],
+        [data-testid="stToolbarActions"],
+        [data-testid="stAppDeployButton"],
+        [data-testid="stStatusWidget"],
+        [data-testid="stDecoration"],
+        [data-testid="manage-app-button"],
+        #MainMenu {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        /* Hide Streamlit's footer and hosted-app badge without affecting the
+           custom Soilless Nutri Master footer or workflow sidebar. */
+        footer,
+        [data-testid="stFooter"],
+        [class^="viewerBadge_container"],
+        [class*=" viewerBadge_container"] {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        html, body, [data-testid="stAppViewContainer"] {
+            overflow-x: hidden !important;
+        }
         .block-container {
             max-width: 1480px;
             padding-top: 1.25rem;
@@ -1230,7 +1255,7 @@ def make_html_report(
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Nutrient Dosing Report</title>
+      <title>Soilless Nutri Master Report</title>
       <style>
       body {{ font-family: Arial, sans-serif; margin: 35px; color:#202124; }}
       h1,h2 {{ color:#1b5e20; }}
@@ -1241,7 +1266,7 @@ def make_html_report(
       </style>
     </head>
     <body>
-      <h1>Nutrient Dosing and Fertigation Report</h1>
+      <h1>Soilless Nutri Master Report</h1>
       <p><b>Project:</b> {project['project_name']}<br>
       <b>Crop:</b> {project['crop']}<br>
       <b>Plants:</b> {project['plants']:,}<br>
@@ -1318,7 +1343,7 @@ def make_pdf_report(
         output, pagesize=landscape(A4),
         leftMargin=12 * mm, rightMargin=12 * mm,
         topMargin=12 * mm, bottomMargin=12 * mm,
-        title="Nutrient Dosing and Fertigation Report",
+        title="Soilless Nutri Master Report",
     )
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
@@ -1367,7 +1392,7 @@ def make_pdf_report(
         return table
 
     story = [
-        Paragraph("Nutrient Dosing and Fertigation Report", styles["ReportTitle"]),
+        Paragraph("Soilless Nutri Master Report", styles["ReportTitle"]),
         Paragraph(
             f"<b>Project:</b> {_pdf_text(project['project_name'])}<br/>"
             f"<b>Crop:</b> {_pdf_text(project['crop'])} &nbsp;&nbsp; "
@@ -1438,7 +1463,7 @@ st.markdown(
     <div class="dashboard-hero">
       <div class="hero-content">
         <div class="hero-kicker">SMART SOILLESS CULTIVATION</div>
-        <h1>Nutrient & Water Intelligence Dashboard</h1>
+        <h1>Soilless Nutri Master</h1>
         <p>Design a balanced nutrient programme, estimate crop-stage water demand from location-based weather, and prepare precise Stock A and Stock B solutions.</p>
         <div class="feature-strip">
           <span class="feature-chip">🌦 Weather-linked ET₀</span>
@@ -1458,7 +1483,7 @@ with st.sidebar:
         """
         <div class="side-brand">
           <div class="side-logo">🌿</div>
-          <div><div class="side-brand-title">Soilless Crop<br>Intelligence</div>
+          <div><div class="side-brand-title">Soilless Nutri<br>Master</div>
           <div class="side-brand-sub">Decision-support dashboard</div></div>
         </div>
         <div class="side-kicker">CURRENT WORKFLOW</div>
@@ -2355,7 +2380,7 @@ elif wizard_step == 5:
         st.download_button(
             "Download HTML report",
             data=report_html.encode("utf-8"),
-            file_name="nutrient_dosing_report.html",
+            file_name="soilless_nutri_master_report.html",
             mime="text/html",
             use_container_width=True
         )
@@ -2363,7 +2388,7 @@ elif wizard_step == 5:
         st.download_button(
             "Download PDF report",
             data=report_pdf,
-            file_name="nutrient_dosing_report.pdf",
+            file_name="soilless_nutri_master_report.pdf",
             mime="application/pdf",
             use_container_width=True
         )
@@ -2385,7 +2410,7 @@ elif wizard_step == 5:
         st.download_button(
             "Download Excel workbook",
             data=excel_buffer,
-            file_name="nutrient_dosing_calculation.xlsx",
+            file_name="soilless_nutri_master_calculation.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
@@ -2425,7 +2450,7 @@ elif wizard_step == 5:
 st.markdown(
     """
     <div class="dashboard-footer">
-      Soilless Crop Intelligence Dashboard &nbsp;•&nbsp; Weather-aware water planning &nbsp;•&nbsp; Nutrient-balance decision support<br>
+      Soilless Nutri Master &nbsp;•&nbsp; Weather-aware water planning &nbsp;•&nbsp; Nutrient-balance decision support<br>
       Planning estimates must be verified with source-water analysis, EC, pH and measured crop response.
     </div>
     """,
