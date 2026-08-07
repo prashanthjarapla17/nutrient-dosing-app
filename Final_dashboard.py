@@ -1,8 +1,14 @@
 
 import math
 import json
+import hashlib
+import hmac
+import os
+import secrets
+import sqlite3
 from io import BytesIO
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -24,12 +30,254 @@ from reportlab.platypus import (
 )
 from scipy.optimize import lsq_linear, minimize
 
+APP_NAME = "Soilless Nutri Master"
+MAX_PROJECTS_PER_USER = 5
+DATABASE_PATH = Path(
+    os.environ.get(
+        "SOILLESS_NUTRI_MASTER_DB",
+        str(Path(__file__).with_name("soilless_nutri_master.db")),
+    )
+)
+
 st.set_page_config(
-    page_title="Soilless Nutri Master",
+    page_title=APP_NAME,
     page_icon="🌱",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+
+def database_connection():
+    """Open the small application database used for accounts and projects."""
+    connection = sqlite3.connect(DATABASE_PATH, timeout=20)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    return connection
+
+
+def initialise_database():
+    with database_connection() as connection:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                display_name TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                password_salt TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                wizard_step INTEGER NOT NULL DEFAULT 1,
+                data_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_projects_user_updated
+            ON projects(user_id, updated_at DESC);
+            """
+        )
+
+
+def make_password_hash(password, salt=None):
+    salt_bytes = bytes.fromhex(salt) if salt else secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt_bytes, 310_000
+    )
+    return digest.hex(), salt_bytes.hex()
+
+
+def verify_password(password, expected_hash, salt):
+    calculated_hash, _ = make_password_hash(password, salt)
+    return hmac.compare_digest(calculated_hash, expected_hash)
+
+
+def create_user(display_name, email, password):
+    password_hash, salt = make_password_hash(password)
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    try:
+        with database_connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO users
+                    (email, display_name, password_hash, password_salt, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (email.strip().lower(), display_name.strip(), password_hash, salt, now),
+            )
+            return int(cursor.lastrowid), None
+    except sqlite3.IntegrityError:
+        return None, "An account with this email address already exists."
+
+
+def authenticate_user(email, password):
+    with database_connection() as connection:
+        user = connection.execute(
+            "SELECT * FROM users WHERE email = ? COLLATE NOCASE",
+            (email.strip(),),
+        ).fetchone()
+    if user and verify_password(password, user["password_hash"], user["password_salt"]):
+        return dict(user)
+    return None
+
+
+def serialise_project_value(value):
+    """Convert wizard values, including DataFrames and dates, to JSON data."""
+    if isinstance(value, pd.DataFrame):
+        split = value.to_dict(orient="split")
+        return {
+            "__snm_type__": "dataframe",
+            "columns": serialise_project_value(split["columns"]),
+            "index": serialise_project_value(split["index"]),
+            "data": serialise_project_value(split["data"]),
+        }
+    if isinstance(value, pd.Series):
+        return {
+            "__snm_type__": "series",
+            "name": value.name,
+            "data": serialise_project_value(value.to_dict()),
+        }
+    if isinstance(value, (datetime, date, pd.Timestamp)):
+        return {"__snm_type__": "date", "value": value.isoformat()}
+    if isinstance(value, np.ndarray):
+        return {"__snm_type__": "ndarray", "data": value.tolist()}
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(key): serialise_project_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [serialise_project_value(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def deserialise_project_value(value):
+    if isinstance(value, list):
+        return [deserialise_project_value(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    value_type = value.get("__snm_type__")
+    if value_type == "dataframe":
+        return pd.DataFrame(
+            deserialise_project_value(value["data"]),
+            columns=deserialise_project_value(value["columns"]),
+            index=deserialise_project_value(value["index"]),
+        )
+    if value_type == "series":
+        return pd.Series(
+            deserialise_project_value(value["data"]), name=value.get("name")
+        )
+    if value_type == "date":
+        parsed = datetime.fromisoformat(value["value"])
+        return parsed.date() if "T" not in value["value"] else parsed
+    if value_type == "ndarray":
+        return np.asarray(value["data"], dtype=float)
+    return {key: deserialise_project_value(item) for key, item in value.items()}
+
+
+def list_user_projects(user_id):
+    with database_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, name, wizard_step, created_at, updated_at
+            FROM projects WHERE user_id = ?
+            ORDER BY updated_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def load_user_project(user_id, project_id):
+    with database_connection() as connection:
+        row = connection.execute(
+            "SELECT * FROM projects WHERE id = ? AND user_id = ?",
+            (project_id, user_id),
+        ).fetchone()
+    if not row:
+        return None
+    project = dict(row)
+    project["wizard_data"] = deserialise_project_value(json.loads(project["data_json"]))
+    return project
+
+
+def save_active_project():
+    user_id = int(st.session_state.auth_user["id"])
+    wizard_data = st.session_state.wizard_data
+    project_water = wizard_data.get("project_water", {})
+    project_name = project_water.get("project_name", "Untitled project").strip()
+    step = int(st.session_state.wizard_step)
+    data_json = json.dumps(serialise_project_value(wizard_data), ensure_ascii=False)
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    active_id = st.session_state.get("active_project_id")
+
+    with database_connection() as connection:
+        if active_id is None:
+            current_count = connection.execute(
+                "SELECT COUNT(*) FROM projects WHERE user_id = ?", (user_id,)
+            ).fetchone()[0]
+            if current_count >= MAX_PROJECTS_PER_USER:
+                raise ValueError(
+                    f"You already have {MAX_PROJECTS_PER_USER} projects. "
+                    "Delete an older project before creating another."
+                )
+            cursor = connection.execute(
+                """
+                INSERT INTO projects
+                    (user_id, name, wizard_step, data_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, project_name, step, data_json, now, now),
+            )
+            st.session_state.active_project_id = int(cursor.lastrowid)
+        else:
+            result = connection.execute(
+                """
+                UPDATE projects
+                SET name = ?, wizard_step = ?, data_json = ?, updated_at = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (project_name, step, data_json, now, int(active_id), user_id),
+            )
+            if result.rowcount != 1:
+                raise ValueError("This project could not be saved for the signed-in user.")
+
+
+def persist_project_at_step(step):
+    previous_step = int(st.session_state.get("wizard_step", 1))
+    st.session_state.wizard_step = int(step)
+    try:
+        save_active_project()
+        return True
+    except (ValueError, sqlite3.Error, TypeError) as error:
+        st.session_state.wizard_step = previous_step
+        st.error(f"Project not saved: {error}")
+        return False
+
+
+def delete_user_project(user_id, project_id):
+    with database_connection() as connection:
+        result = connection.execute(
+            "DELETE FROM projects WHERE id = ? AND user_id = ?",
+            (project_id, user_id),
+        )
+    return result.rowcount == 1
+
+
+def sign_out():
+    for key in (
+        "auth_user", "active_project_id", "wizard_data", "wizard_step",
+        "workspace_view", "delete_confirmation",
+    ):
+        st.session_state.pop(key, None)
+
 
 def apply_dashboard_theme():
     """Apply a responsive professional dashboard theme without extra packages."""
@@ -69,11 +317,27 @@ def apply_dashboard_theme():
         [data-testid="stToolbarActions"],
         [data-testid="stAppDeployButton"],
         [data-testid="stStatusWidget"],
+        [data-testid="stConnectionStatus"],
         [data-testid="stDecoration"],
         [data-testid="manage-app-button"],
+        .stDeployButton,
         #MainMenu {
             display: none !important;
             visibility: hidden !important;
+        }
+
+        /* The two sidebar controls must remain available on desktop and phone. */
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="stSidebarCollapseButton"] {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        [data-testid="stSidebarCollapsedControl"] button {
+            color:#fff !important; background:#0b6e57 !important;
+            border:1px solid rgba(255,255,255,.45) !important;
+            border-radius:10px !important;
+            box-shadow:0 5px 14px rgba(11,93,75,.24) !important;
         }
 
         /* Hide Streamlit's footer and hosted-app badge without affecting the
@@ -81,7 +345,8 @@ def apply_dashboard_theme():
         footer,
         [data-testid="stFooter"],
         [class^="viewerBadge_container"],
-        [class*=" viewerBadge_container"] {
+        [class*=" viewerBadge_container"],
+        iframe[title="streamlit_badge"] {
             display: none !important;
             visibility: hidden !important;
         }
@@ -99,6 +364,11 @@ def apply_dashboard_theme():
         [data-testid="stSidebar"] {
             background: linear-gradient(165deg, #083e35 0%, #0b5d4b 52%, #117568 100%);
             border-right: 0;
+        }
+        [data-testid="stSidebarContent"] {
+            overflow-y:auto !important;
+            scrollbar-width:thin;
+            scrollbar-color:rgba(255,255,255,.42) transparent;
         }
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] li,
@@ -133,6 +403,40 @@ def apply_dashboard_theme():
         .side-note {
             margin-top:1.1rem; padding:.8rem .9rem; border-radius:12px;
             background:rgba(5,36,31,.28); color:#cdece4; font-size:.76rem; line-height:1.45;
+        }
+        .profile-card {
+            margin:.8rem 0; padding:.8rem .9rem; border-radius:13px;
+            background:rgba(255,255,255,.11); border:1px solid rgba(255,255,255,.16);
+        }
+        .profile-name {color:#fff; font-weight:800; font-size:.88rem;}
+        .profile-email {color:#bfe7dc; font-size:.7rem; overflow-wrap:anywhere;}
+        [data-testid="stSidebar"] .stButton > button {
+            width:100%; color:#effffb; background:rgba(255,255,255,.10);
+            border-color:rgba(255,255,255,.22);
+        }
+        [data-testid="stSidebar"] .stButton > button:hover {
+            color:#fff; border-color:#ffd47b; background:rgba(255,255,255,.16);
+        }
+
+        /* Login and project workspace */
+        .auth-shell {
+            max-width:720px; margin:2.2rem auto .8rem; padding:1.3rem 1.5rem;
+            border-radius:22px; color:#fff;
+            background:linear-gradient(120deg,#0a4d40,#0d765f 58%,#15979a);
+            box-shadow:0 18px 45px rgba(11,93,75,.20);
+        }
+        .auth-shell h1 {margin:.25rem 0 .4rem; color:#fff;}
+        .auth-shell p {margin:0; color:#dcfff6;}
+        .workspace-card {
+            min-height:185px; padding:1.15rem 1.2rem; border-radius:18px;
+            background:#fff; border:1px solid var(--line);
+            box-shadow:0 8px 24px rgba(20,71,59,.08);
+        }
+        .workspace-card h3 {margin:.1rem 0 .45rem;}
+        .workspace-card p {color:var(--muted); font-size:.84rem;}
+        .project-count {
+            display:inline-block; padding:.35rem .65rem; border-radius:999px;
+            background:#e4f6ef; color:#0b6e57; font-size:.75rem; font-weight:800;
         }
 
         /* Hero */
@@ -1443,6 +1747,241 @@ def make_pdf_report(
     output.seek(0)
     return output.getvalue()
 
+
+def render_login_page():
+    st.markdown(
+        """
+        <div class="auth-shell">
+          <div style="font-size:2.2rem">🌿</div>
+          <h1>Soilless Nutri Master</h1>
+          <p>Sign in to create, save and continue your nutrient-management projects.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    sign_in_tab, register_tab = st.tabs(["Sign in", "Create profile"])
+    with sign_in_tab:
+        with st.form("sign_in_form"):
+            email = st.text_input("Email address", placeholder="name@example.com")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button(
+                "Sign in", type="primary", use_container_width=True
+            )
+        if submitted:
+            user = authenticate_user(email, password)
+            if user:
+                st.session_state.auth_user = {
+                    "id": int(user["id"]),
+                    "display_name": user["display_name"],
+                    "email": user["email"],
+                }
+                st.session_state.workspace_view = "home"
+                st.rerun()
+            else:
+                st.error("Email address or password is incorrect.")
+
+    with register_tab:
+        with st.form("create_profile_form"):
+            display_name = st.text_input("Full name")
+            new_email = st.text_input("Email address", key="registration_email")
+            new_password = st.text_input(
+                "Create password", type="password", key="registration_password"
+            )
+            confirm_password = st.text_input(
+                "Confirm password", type="password", key="registration_confirmation"
+            )
+            registered = st.form_submit_button(
+                "Create profile", type="primary", use_container_width=True
+            )
+        if registered:
+            errors = []
+            if len(display_name.strip()) < 2:
+                errors.append("Enter your full name.")
+            if "@" not in new_email or "." not in new_email.rsplit("@", 1)[-1]:
+                errors.append("Enter a valid email address.")
+            if len(new_password) < 8:
+                errors.append("Password must contain at least 8 characters.")
+            if new_password != confirm_password:
+                errors.append("The two passwords do not match.")
+            if errors:
+                for message in errors:
+                    st.error(message)
+            else:
+                user_id, error = create_user(display_name, new_email, new_password)
+                if error:
+                    st.error(error)
+                else:
+                    st.session_state.auth_user = {
+                        "id": user_id,
+                        "display_name": display_name.strip(),
+                        "email": new_email.strip().lower(),
+                    }
+                    st.session_state.workspace_view = "home"
+                    st.success("Profile created successfully.")
+                    st.rerun()
+
+
+def reset_project_session(view="wizard"):
+    auth_user = st.session_state.auth_user
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.session_state.auth_user = auth_user
+    st.session_state.workspace_view = view
+
+
+def render_project_home():
+    user = st.session_state.auth_user
+    projects = list_user_projects(user["id"])
+    render_page_heading(
+        "🗂️", "Project Workspace",
+        "Start a new plan or reopen an existing project for review and modification.",
+    )
+    st.markdown(
+        f'<span class="project-count">{len(projects)} of {MAX_PROJECTS_PER_USER} project slots used</span>',
+        unsafe_allow_html=True,
+    )
+    st.write("")
+    new_column, existing_column = st.columns(2)
+    with new_column:
+        st.markdown(
+            """
+            <div class="workspace-card">
+              <div style="font-size:1.8rem">✨</div>
+              <h3>New Project</h3>
+              <p>Create a new crop, water, nutrient and fertilizer plan from the beginning.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        new_disabled = len(projects) >= MAX_PROJECTS_PER_USER
+        if st.button(
+            "Create New Project", type="primary", use_container_width=True,
+            disabled=new_disabled,
+        ):
+            reset_project_session("wizard")
+            st.session_state.wizard_step = 1
+            st.session_state.wizard_data = {}
+            st.session_state.active_project_id = None
+            st.rerun()
+        if new_disabled:
+            st.warning("Five projects are already saved. Delete one to create another.")
+
+    with existing_column:
+        st.markdown(
+            """
+            <div class="workspace-card">
+              <div style="font-size:1.8rem">📝</div>
+              <h3>Existing Project / Modify</h3>
+              <p>Open a saved project, continue its workflow, review the report or modify inputs.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if projects:
+            labels = {
+                project["id"]: (
+                    f'{project["name"]} — Step {project["wizard_step"]}/5 — '
+                    f'{project["updated_at"].replace("T", " ")} UTC'
+                )
+                for project in projects
+            }
+            selected_id = st.selectbox(
+                "Select saved project",
+                options=[project["id"] for project in projects],
+                format_func=lambda project_id: labels[project_id],
+            )
+            if st.button("Open Selected Project", use_container_width=True):
+                selected_project = load_user_project(user["id"], selected_id)
+                if not selected_project:
+                    st.error("The selected project could not be opened.")
+                else:
+                    saved_data = selected_project["wizard_data"]
+                    saved_step = max(1, min(5, int(selected_project["wizard_step"])))
+                    reset_project_session("wizard")
+                    st.session_state.wizard_data = saved_data
+                    st.session_state.wizard_step = saved_step
+                    st.session_state.active_project_id = int(selected_id)
+                    st.rerun()
+
+            with st.expander("Delete a saved project"):
+                st.warning("Deleting a project permanently removes its saved calculation data.")
+                confirmed = st.checkbox(
+                    "I understand and want to delete the selected project",
+                    key="delete_confirmation",
+                )
+                if st.button(
+                    "Delete Selected Project", disabled=not confirmed,
+                    use_container_width=True,
+                ):
+                    if delete_user_project(user["id"], selected_id):
+                        st.success("Project deleted.")
+                        st.session_state.delete_confirmation = False
+                        st.rerun()
+                    else:
+                        st.error("The selected project could not be deleted.")
+        else:
+            st.info("No saved projects yet. Create your first project on the left.")
+
+
+def render_profile_page():
+    user = st.session_state.auth_user
+    render_page_heading(
+        "👤", "User Profile",
+        "Review your account information and update your profile or password.",
+    )
+    profile_col, password_col = st.columns(2)
+    with profile_col:
+        st.markdown("#### Profile details")
+        with st.form("update_profile_form"):
+            profile_name = st.text_input("Full name", user["display_name"])
+            st.text_input("Email address", user["email"], disabled=True)
+            update_profile = st.form_submit_button(
+                "Save Profile", type="primary", use_container_width=True
+            )
+        if update_profile:
+            if len(profile_name.strip()) < 2:
+                st.error("Enter your full name.")
+            else:
+                with database_connection() as connection:
+                    connection.execute(
+                        "UPDATE users SET display_name = ? WHERE id = ?",
+                        (profile_name.strip(), int(user["id"])),
+                    )
+                st.session_state.auth_user["display_name"] = profile_name.strip()
+                st.success("Profile updated.")
+                st.rerun()
+
+    with password_col:
+        st.markdown("#### Change password")
+        with st.form("change_password_form"):
+            current_password = st.text_input("Current password", type="password")
+            replacement_password = st.text_input("New password", type="password")
+            replacement_confirmation = st.text_input(
+                "Confirm new password", type="password"
+            )
+            update_password = st.form_submit_button(
+                "Change Password", use_container_width=True
+            )
+        if update_password:
+            authenticated = authenticate_user(user["email"], current_password)
+            if not authenticated:
+                st.error("Current password is incorrect.")
+            elif len(replacement_password) < 8:
+                st.error("New password must contain at least 8 characters.")
+            elif replacement_password != replacement_confirmation:
+                st.error("The two new passwords do not match.")
+            else:
+                password_hash, salt = make_password_hash(replacement_password)
+                with database_connection() as connection:
+                    connection.execute(
+                        """
+                        UPDATE users SET password_hash = ?, password_salt = ?
+                        WHERE id = ?
+                        """,
+                        (password_hash, salt, int(user["id"])),
+                    )
+                st.success("Password changed successfully.")
+
 # -----------------------------
 # UI
 # -----------------------------
@@ -1450,13 +1989,23 @@ STEP_LABELS = [
     "Project & Water", "Nutrient Targets", "Fertilizer Selection",
     "Balance & Stock", "Report"
 ]
+initialise_database()
+apply_dashboard_theme()
+
+if "auth_user" not in st.session_state:
+    render_login_page()
+    st.stop()
+
+if "workspace_view" not in st.session_state:
+    st.session_state.workspace_view = "home"
 if "wizard_step" not in st.session_state:
     st.session_state.wizard_step = 1
 if "wizard_data" not in st.session_state:
     st.session_state.wizard_data = {}
 
 wizard_step = int(st.session_state.wizard_step)
-apply_dashboard_theme()
+workspace_view = st.session_state.workspace_view
+auth_user = st.session_state.auth_user
 
 st.markdown(
     """
@@ -1491,11 +2040,42 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown(
-        f'<div class="side-current">Step {wizard_step} of {len(STEP_LABELS)}<br>'
-        f'<span style="font-size:.78rem;font-weight:500;color:#c7ece2">{STEP_LABELS[wizard_step - 1]}</span></div>',
+        f"""
+        <div class="profile-card">
+          <div class="profile-name">👤 {escape(auth_user['display_name'])}</div>
+          <div class="profile-email">{escape(auth_user['email'])}</div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
-    st.progress((wizard_step - 1) / (len(STEP_LABELS) - 1))
+    navigation_col1, navigation_col2 = st.columns(2)
+    with navigation_col1:
+        if st.button("🗂 Projects", key="sidebar_projects"):
+            st.session_state.workspace_view = "home"
+            st.rerun()
+    with navigation_col2:
+        if st.button("👤 Profile", key="sidebar_profile"):
+            st.session_state.workspace_view = "profile"
+            st.rerun()
+    if st.button("↪ Sign out", key="sidebar_sign_out", use_container_width=True):
+        sign_out()
+        st.rerun()
+
+    if workspace_view == "wizard":
+        st.markdown('<div class="side-kicker">CURRENT WORKFLOW</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="side-current">Step {wizard_step} of {len(STEP_LABELS)}<br>'
+            f'<span style="font-size:.78rem;font-weight:500;color:#c7ece2">{STEP_LABELS[wizard_step - 1]}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.progress((wizard_step - 1) / (len(STEP_LABELS) - 1))
+        active_name = st.session_state.wizard_data.get("project_water", {}).get(
+            "project_name", "New unsaved project"
+        )
+        st.caption(f"Active project: {active_name}")
+        if st.button("✏️ Edit project setup", use_container_width=True):
+            if persist_project_at_step(1):
+                st.rerun()
     st.markdown(
         """
         <div class="side-kicker">DASHBOARD MODULES</div>
@@ -1512,6 +2092,27 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    with st.expander("Developer & hosting"):
+        st.caption("Developer: Project team")
+        st.caption("Application engine: Streamlit")
+        st.caption("These details are kept here instead of the bottom branding bar.")
+
+if workspace_view == "home":
+    render_project_home()
+    st.markdown(
+        """
+        <div class="dashboard-footer">
+          Soilless Nutri Master &nbsp;•&nbsp; Secure project workspace &nbsp;•&nbsp; Maximum five projects per profile
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
+if workspace_view == "profile":
+    render_profile_page()
+    st.stop()
+
 step_cards = []
 for number, label in enumerate(STEP_LABELS, start=1):
     state = "done" if number < wizard_step else "current" if number == wizard_step else "locked"
@@ -1527,15 +2128,38 @@ if wizard_step == 1:
         "🌱", "Project, Crop & Water Planning",
         "Select the crop and cultivation system, then generate a location-specific stage-wise irrigation schedule.",
     )
+    saved_setup = st.session_state.wizard_data.get("project_water", {})
+    crop_options = list(CROP_PROFILES) + ["Custom crop"]
+    saved_crop_name = saved_setup.get("crop", "Tomato")
+    saved_crop_selection = (
+        saved_crop_name if saved_crop_name in CROP_PROFILES else "Custom crop"
+    )
+    system_options = list(SYSTEM_PROFILES) + ["Other / custom system"]
+    saved_system = saved_setup.get("system", system_options[0])
+    if saved_system not in system_options:
+        saved_system = "Other / custom system"
+
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        project_name = st.text_input("Project name", "Hydroponic nutrient plan")
-        crop_selection = st.selectbox("Crop", list(CROP_PROFILES) + ["Custom crop"])
+        project_name = st.text_input(
+            "Project name", saved_setup.get("project_name", "Hydroponic nutrient plan")
+        )
+        crop_selection = st.selectbox(
+            "Crop", crop_options, index=crop_options.index(saved_crop_selection)
+        )
     with c2:
-        plants = st.number_input("Number of plants", min_value=1, value=1000, step=1)
-        crop_start = st.date_input("Crop start date", date.today(), key="crop_start_date")
+        plants = st.number_input(
+            "Number of plants", min_value=1,
+            value=int(saved_setup.get("plants", 1000)), step=1,
+        )
+        crop_start = st.date_input(
+            "Crop start date", saved_setup.get("crop_start", date.today()),
+            key="crop_start_date",
+        )
     with c3:
-        system = st.selectbox("Cultivation system", list(SYSTEM_PROFILES) + ["Other / custom system"])
+        system = st.selectbox(
+            "Cultivation system", system_options, index=system_options.index(saved_system)
+        )
     with c4:
         st.caption("Crop period, stage Kc, system efficiency and drainage are filled automatically.")
 
@@ -1543,25 +2167,32 @@ if wizard_step == 1:
         st.markdown("#### Custom crop profile")
         custom_col1, custom_col2 = st.columns(2)
         with custom_col1:
-            crop = st.text_input("Custom crop name", "Custom crop")
+            crop = st.text_input("Custom crop name", saved_crop_name)
         with custom_col2:
             plant_area = st.number_input(
                 "Effective area per plant (m²)", min_value=0.001,
-                value=0.10, step=0.01, key="custom_plant_area",
+                value=float(saved_setup.get("plant_area", 0.10)),
+                step=0.01, key="custom_plant_area",
             )
         custom_stage_names = ["Initial", "Development", "Maturity / production", "Final"]
+        saved_stages = saved_setup.get("stages", [])
         stage_columns = st.columns(4)
         stages = []
         for index, (column, stage_name) in enumerate(zip(stage_columns, custom_stage_names)):
             with column:
                 st.markdown(f"**{stage_name}**")
+                saved_stage = (
+                    saved_stages[index]
+                    if index < len(saved_stages)
+                    else (stage_name, [10, 20, 30, 10][index], [0.40, 0.65, 0.95, 0.75][index])
+                )
                 stage_duration = st.number_input(
-                    "Duration (days)", min_value=1, value=[10, 20, 30, 10][index],
+                    "Duration (days)", min_value=1, value=int(saved_stage[1]),
                     step=1, key=f"custom_stage_days_{index}",
                 )
                 stage_kc = st.number_input(
                     "Crop coefficient (Kc)", min_value=0.05, max_value=2.0,
-                    value=[0.40, 0.65, 0.95, 0.75][index], step=0.05,
+                    value=float(saved_stage[2]), step=0.05,
                     key=f"custom_stage_kc_{index}",
                 )
                 stages.append((stage_name, int(stage_duration), float(stage_kc)))
@@ -1830,17 +2461,27 @@ if wizard_step == 1:
                 "stage_summary": stage_summary, "daily_schedule": daily_schedule,
                 "crop_profile_df": profile_df,
             }
-            st.session_state.wizard_step = 2
-            st.rerun()
+            if persist_project_at_step(2):
+                st.rerun()
 
 elif wizard_step == 2:
     render_page_heading(
         "🧪", "Elemental Nutrient Targets",
         "Use a published formulation or define a complete custom elemental target in mg/L.",
     )
-    formulation = st.selectbox("Reference formulation", list(FORMULATIONS.keys()) + ["Fully custom"])
+    formulation_options = list(FORMULATIONS.keys()) + ["Fully custom"]
+    saved_formulation = st.session_state.wizard_data.get("targets", {}).get(
+        "formulation", formulation_options[0]
+    )
+    formulation = st.selectbox(
+        "Reference formulation", formulation_options,
+        index=formulation_options.index(saved_formulation)
+        if saved_formulation in formulation_options else 0,
+    )
     if formulation == "Fully custom":
-        default_targets = {e: 0.0 for e in ELEMENTS}
+        default_targets = st.session_state.wizard_data.get("targets", {}).get(
+            "targets", {e: 0.0 for e in ELEMENTS}
+        )
     else:
         default_targets = FORMULATIONS[formulation]
         st.success("The published elemental targets are locked for this predefined formulation.")
@@ -1873,8 +2514,8 @@ elif wizard_step == 2:
     back_col, next_col = st.columns(2)
     with back_col:
         if st.button("Back to Page 1", use_container_width=True):
-            st.session_state.wizard_step = 1
-            st.rerun()
+            if persist_project_at_step(1):
+                st.rerun()
     with next_col:
         if st.button("Submit Page 2 and Continue", type="primary", use_container_width=True):
             missing_targets = [e for e in ELEMENTS if not np.isfinite(targets[e]) or targets[e] <= 0]
@@ -1889,8 +2530,8 @@ elif wizard_step == 2:
                     "targets": dict(targets),
                     "target_df": target_df,
                 }
-                st.session_state.wizard_step = 3
-                st.rerun()
+                if persist_project_at_step(3):
+                    st.rerun()
 
 elif wizard_step == 3:
     target_state = st.session_state.wizard_data["targets"]
@@ -2141,8 +2782,8 @@ elif wizard_step == 3:
     back_col, next_col = st.columns(2)
     with back_col:
         if st.button("Back to Page 2", use_container_width=True):
-            st.session_state.wizard_step = 2
-            st.rerun()
+            if persist_project_at_step(2):
+                st.rerun()
     with next_col:
         continue_selection = st.button(
             "Submit Balanced Combination and Continue",
@@ -2158,8 +2799,8 @@ elif wizard_step == 3:
                 "tolerance": float(tolerance), "x": evaluation["x"],
                 "nutrient_result": nutrient_result,
             }
-            st.session_state.wizard_step = 4
-            st.rerun()
+            if persist_project_at_step(4):
+                st.rerun()
 
 elif wizard_step == 4:
     render_page_heading(
@@ -2286,8 +2927,8 @@ elif wizard_step == 4:
     back_col, next_col = st.columns(2)
     with back_col:
         if st.button("Back to Page 3", use_container_width=True):
-            st.session_state.wizard_step = 3
-            st.rerun()
+            if persist_project_at_step(3):
+                st.rerun()
     with next_col:
         if st.button(
             "Submit Page 4 and Create Reports", type="primary",
@@ -2302,8 +2943,8 @@ elif wizard_step == 4:
                 "fertilizer_result": fertilizer_result,
                 "stock_result": stock_result,
             }
-            st.session_state.wizard_step = 5
-            st.rerun()
+            if persist_project_at_step(5):
+                st.rerun()
 
 elif wizard_step == 5:
     render_page_heading(
@@ -2439,12 +3080,11 @@ elif wizard_step == 5:
     back_col, restart_col = st.columns(2)
     with back_col:
         if st.button("Back to Page 4", use_container_width=True):
-            st.session_state.wizard_step = 4
-            st.rerun()
+            if persist_project_at_step(4):
+                st.rerun()
     with restart_col:
-        if st.button("Start a New Calculation", use_container_width=True):
-            st.session_state.wizard_data = {}
-            st.session_state.wizard_step = 1
+        if st.button("Return to Project Workspace", use_container_width=True):
+            st.session_state.workspace_view = "home"
             st.rerun()
 
 st.markdown(
