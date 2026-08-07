@@ -435,43 +435,158 @@ def apply_dashboard_theme():
         }
         .profile-form-guide strong {color:#000000;}
 
-        /* High-contrast sign-in/profile fields. Keep labels black and the
-           entry boxes white so every requested item is clear on mobile. */
-        [data-testid="stForm"] [data-testid="stWidgetLabel"] p,
-        [data-testid="stForm"] [data-testid="stTextInput"] label,
-        [data-testid="stForm"] [data-testid="stTextInput"] label p {
+        /* High-contrast controls throughout the main workspace. Streamlit can
+           inherit a dark widget theme even when the page background is light;
+           keep every field label dark and every editable box white. The dark
+           workflow sidebar is intentionally excluded from these selectors. */
+        [data-testid="stMain"] [data-testid="stWidgetLabel"],
+        [data-testid="stMain"] [data-testid="stWidgetLabel"] p,
+        [data-testid="stMain"] label,
+        [data-testid="stMain"] label p,
+        [data-testid="stMain"] [data-testid="stRadio"] p,
+        [data-testid="stMain"] [data-testid="stCheckbox"] p,
+        [data-testid="stMain"] [data-testid="stToggle"] p,
+        [data-testid="stMain"] [data-testid="stFileUploader"] p,
+        [data-testid="stMain"] [data-testid="stFileUploader"] small {
             color:#000000 !important;
             -webkit-text-fill-color:#000000 !important;
             font-weight:750 !important;
             opacity:1 !important;
         }
-        [data-testid="stForm"] div[data-baseweb="input"],
-        [data-testid="stForm"] div[data-baseweb="input"] > div,
-        [data-testid="stForm"] [data-testid="stTextInput"] input {
+
+        /* Text, password, numeric and date inputs. */
+        [data-testid="stMain"] div[data-baseweb="input"],
+        [data-testid="stMain"] div[data-baseweb="input"] > div,
+        [data-testid="stMain"] div[data-baseweb="base-input"],
+        [data-testid="stMain"] [data-testid="stTextInput"] input,
+        [data-testid="stMain"] [data-testid="stNumberInput"] input,
+        [data-testid="stMain"] [data-testid="stDateInput"] input,
+        [data-testid="stMain"] [data-testid="stTimeInput"] input,
+        [data-testid="stMain"] textarea {
             background:#ffffff !important;
-        }
-        [data-testid="stForm"] div[data-baseweb="input"] {
-            border:1.5px solid #66736f !important;
-            border-radius:10px !important;
-            box-shadow:none !important;
-        }
-        [data-testid="stForm"] div[data-baseweb="input"]:focus-within {
-            border-color:#0b6e57 !important;
-            box-shadow:0 0 0 2px rgba(11,110,87,.16) !important;
-        }
-        [data-testid="stForm"] [data-testid="stTextInput"] input {
+            background-color:#ffffff !important;
             color:#000000 !important;
             -webkit-text-fill-color:#000000 !important;
             caret-color:#000000 !important;
             opacity:1 !important;
         }
-        [data-testid="stForm"] [data-testid="stTextInput"] input::placeholder {
+        [data-testid="stMain"] div[data-baseweb="input"],
+        [data-testid="stMain"] div[data-baseweb="textarea"] {
+            border:1.5px solid #66736f !important;
+            border-radius:10px !important;
+            box-shadow:none !important;
+        }
+        [data-testid="stMain"] div[data-baseweb="input"]:focus-within,
+        [data-testid="stMain"] div[data-baseweb="textarea"]:focus-within {
+            border-color:#0b6e57 !important;
+            box-shadow:0 0 0 2px rgba(11,110,87,.16) !important;
+        }
+        [data-testid="stMain"] input::placeholder,
+        [data-testid="stMain"] textarea::placeholder {
             color:#68736f !important;
             -webkit-text-fill-color:#68736f !important;
             opacity:1 !important;
         }
-        [data-testid="stForm"] [data-testid="stTextInput"] button {
+        [data-testid="stMain"] [data-testid="stTextInput"] button,
+        [data-testid="stMain"] [data-testid="stNumberInput"] button,
+        [data-testid="stMain"] [data-testid="stDateInput"] button,
+        [data-testid="stMain"] [data-testid="stTimeInput"] button {
             color:#1d2a26 !important;
+            background:#ffffff !important;
+            border-color:#66736f !important;
+        }
+        [data-testid="stMain"] div[data-baseweb="input"] svg,
+        [data-testid="stMain"] div[data-baseweb="select"] svg {
+            fill:#1d2a26 !important;
+            color:#1d2a26 !important;
+        }
+
+        /* Select and multiselect boxes, including their displayed values. */
+        [data-testid="stMain"] div[data-baseweb="select"] > div {
+            background:#ffffff !important;
+            background-color:#ffffff !important;
+            color:#000000 !important;
+            border:1.5px solid #66736f !important;
+            border-radius:10px !important;
+            box-shadow:none !important;
+        }
+        [data-testid="stMain"] div[data-baseweb="select"] > div:focus-within {
+            border-color:#0b6e57 !important;
+            box-shadow:0 0 0 2px rgba(11,110,87,.16) !important;
+        }
+        [data-testid="stMain"] div[data-baseweb="select"] span,
+        [data-testid="stMain"] div[data-baseweb="select"] input,
+        [data-testid="stMain"] div[data-baseweb="select"] div {
+            color:#000000 !important;
+            -webkit-text-fill-color:#000000 !important;
+        }
+        [data-testid="stMain"] div[data-baseweb="tag"] {
+            background:#dff5ec !important;
+            color:#063f34 !important;
+        }
+        [data-testid="stMain"] div[data-baseweb="tag"] span {
+            color:#063f34 !important;
+            -webkit-text-fill-color:#063f34 !important;
+        }
+
+        /* Radio, checkbox, toggle, slider and segmented-choice text. */
+        [data-testid="stMain"] [role="radiogroup"],
+        [data-testid="stMain"] [data-testid="stCheckbox"],
+        [data-testid="stMain"] [data-testid="stToggle"],
+        [data-testid="stMain"] [data-testid="stSlider"],
+        [data-testid="stMain"] [data-testid="stSegmentedControl"] {
+            color:#000000 !important;
+        }
+        [data-testid="stMain"] [role="radiogroup"] label,
+        [data-testid="stMain"] [data-testid="stCheckbox"] label,
+        [data-testid="stMain"] [data-testid="stToggle"] label,
+        [data-testid="stMain"] [data-testid="stSegmentedControl"] button {
+            color:#000000 !important;
+            -webkit-text-fill-color:#000000 !important;
+        }
+
+        /* Upload areas and disabled fields stay readable as well. */
+        [data-testid="stMain"] [data-testid="stFileUploaderDropzone"] {
+            background:#ffffff !important;
+            color:#000000 !important;
+            border:1.5px dashed #66736f !important;
+        }
+        [data-testid="stMain"] input:disabled,
+        [data-testid="stMain"] textarea:disabled {
+            background:#f1f4f3 !important;
+            color:#34433f !important;
+            -webkit-text-fill-color:#34433f !important;
+            opacity:1 !important;
+        }
+
+        /* Tabs sit on the light page and therefore also use dark text. */
+        [data-testid="stMain"] [data-baseweb="tab-list"] {
+            background:#ffffff !important;
+            border-radius:10px !important;
+        }
+        [data-testid="stMain"] [data-baseweb="tab"] {
+            color:#000000 !important;
+            -webkit-text-fill-color:#000000 !important;
+        }
+
+        /* Dropdown/date menus are rendered outside the main content tree. */
+        div[data-baseweb="popover"],
+        div[data-baseweb="popover"] ul,
+        div[data-baseweb="menu"],
+        [role="listbox"],
+        [role="option"] {
+            background:#ffffff !important;
+            color:#000000 !important;
+        }
+        [role="option"] *,
+        div[data-baseweb="popover"] * {
+            color:#000000 !important;
+            -webkit-text-fill-color:#000000 !important;
+        }
+        [role="option"]:hover,
+        [role="option"][aria-selected="true"] {
+            background:#e4f6ef !important;
+            color:#063f34 !important;
         }
         .workspace-card {
             min-height:185px; padding:1.15rem 1.2rem; border-radius:18px;
