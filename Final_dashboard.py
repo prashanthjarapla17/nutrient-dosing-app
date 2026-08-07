@@ -29,6 +29,11 @@ st.set_page_config(
     page_icon="🌱",
     layout="wide",
     initial_sidebar_state="expanded",
+    menu_items={
+        "Get Help": None,
+        "Report a Bug": None,
+        "About": None,
+    },
 )
 
 def apply_dashboard_theme():
@@ -54,21 +59,52 @@ def apply_dashboard_theme():
             color: var(--ink);
         }
 
-        /* Hide Streamlit branding and platform controls in web and mobile views. */
-        [data-testid="stHeader"],
+        /*
+         * Keep the header shell available because Streamlit places the
+         * sidebar open/close control inside it on narrow mobile screens.
+         * Only the platform controls and branding are hidden.
+         */
+        [data-testid="stHeader"] {
+            background: transparent !important;
+            height: 3rem !important;
+            min-height: 3rem !important;
+            pointer-events: none !important;
+        }
+        [data-testid="stHeader"] button,
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="stSidebarCollapseButton"] {
+            pointer-events: auto !important;
+        }
+
         [data-testid="stToolbar"],
         [data-testid="stDecoration"],
         [data-testid="stStatusWidget"],
         [data-testid="stAppDeployButton"],
         [data-testid="stMainMenu"],
+        [data-testid="stAppBadge"],
+        [data-testid="stCommunityCloudBadge"],
+        [data-testid="stFooter"],
         #MainMenu,
         .stDeployButton,
         [class*="viewerBadge"],
+        [class*="ViewerBadge"],
+        [class*="streamlit-badge"],
+        a[href="https://streamlit.io"],
+        a[href^="https://streamlit.io/"],
         footer {
             display: none !important;
             visibility: hidden !important;
             height: 0 !important;
             min-height: 0 !important;
+        }
+
+        /* Always retain the workflow sidebar controls. */
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="stSidebarCollapseButton"] {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 1000001 !important;
         }
 
         html, body, [data-testid="stAppViewContainer"] {
@@ -241,6 +277,19 @@ def apply_dashboard_theme():
 
         @media (max-width: 900px) {
             .block-container {padding:1rem .8rem 2.5rem;}
+            [data-testid="stSidebarCollapsedControl"] {
+                position: fixed !important;
+                top: .45rem !important;
+                left: .45rem !important;
+                padding: .2rem !important;
+                border-radius: .7rem !important;
+                background: #0b5d4b !important;
+                box-shadow: 0 5px 15px rgba(5,54,44,.25) !important;
+            }
+            [data-testid="stSidebarCollapsedControl"] svg {
+                color: #ffffff !important;
+                fill: #ffffff !important;
+            }
             .dashboard-hero {padding:1.25rem; border-radius:18px;}
             .dashboard-hero h1 {font-size:1.55rem;}
             .hero-mark {width:72px; height:72px; font-size:2rem; border-radius:18px;}
