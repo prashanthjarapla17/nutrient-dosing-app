@@ -25,15 +25,10 @@ from reportlab.platypus import (
 from scipy.optimize import lsq_linear, minimize
 
 st.set_page_config(
-    page_title="Soilless Nutri Master",
-    page_icon="🌱",
+    page_title="Soilless Crop Intelligence",
+    page_icon="🌿",
     layout="wide",
     initial_sidebar_state="expanded",
-    menu_items={
-        "Get Help": None,
-        "Report a Bug": None,
-        "About": None,
-    },
 )
 
 def apply_dashboard_theme():
@@ -58,68 +53,20 @@ def apply_dashboard_theme():
             font-family: "Segoe UI", Inter, Arial, sans-serif;
             color: var(--ink);
         }
-
-        /*
-         * Keep the header shell available because Streamlit places the
-         * sidebar open/close control inside it on narrow mobile screens.
-         * Only the platform controls and branding are hidden.
-         */
-        [data-testid="stHeader"] {
-            background: transparent !important;
-            height: 3rem !important;
-            min-height: 3rem !important;
-            pointer-events: none !important;
-        }
-        [data-testid="stHeader"] button,
-        [data-testid="stSidebarCollapsedControl"],
-        [data-testid="stSidebarCollapseButton"] {
-            pointer-events: auto !important;
-        }
-
-        [data-testid="stToolbar"],
-        [data-testid="stDecoration"],
-        [data-testid="stStatusWidget"],
-        [data-testid="stAppDeployButton"],
-        [data-testid="stMainMenu"],
-        [data-testid="stAppBadge"],
-        [data-testid="stCommunityCloudBadge"],
-        [data-testid="stFooter"],
-        #MainMenu,
-        .stDeployButton,
-        [class*="viewerBadge"],
-        [class*="ViewerBadge"],
-        [class*="streamlit-badge"],
-        a[href="https://streamlit.io"],
-        a[href^="https://streamlit.io/"],
-        footer {
-            display: none !important;
-            visibility: hidden !important;
-            height: 0 !important;
-            min-height: 0 !important;
-        }
-
-        /* Always retain the workflow sidebar controls. */
-        [data-testid="stSidebarCollapsedControl"],
-        [data-testid="stSidebarCollapseButton"] {
-            display: flex !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            z-index: 1000001 !important;
-        }
-
-        html, body, [data-testid="stAppViewContainer"] {
-            overflow-x: hidden !important;
-        }
-
         .stApp {
             background:
                 radial-gradient(circle at 88% 4%, rgba(32,164,166,.13), transparent 24rem),
                 radial-gradient(circle at 4% 18%, rgba(17,133,104,.10), transparent 22rem),
                 #f5faf8;
         }
+        [data-testid="stHeader"] {
+            background: rgba(245,250,248,.86);
+            backdrop-filter: blur(10px);
+        }
+        [data-testid="stToolbar"] { right: 1rem; }
         .block-container {
             max-width: 1480px;
-            padding-top: .75rem;
+            padding-top: 1.25rem;
             padding-bottom: 3rem;
         }
 
@@ -277,19 +224,6 @@ def apply_dashboard_theme():
 
         @media (max-width: 900px) {
             .block-container {padding:1rem .8rem 2.5rem;}
-            [data-testid="stSidebarCollapsedControl"] {
-                position: fixed !important;
-                top: .45rem !important;
-                left: .45rem !important;
-                padding: .2rem !important;
-                border-radius: .7rem !important;
-                background: #0b5d4b !important;
-                box-shadow: 0 5px 15px rgba(5,54,44,.25) !important;
-            }
-            [data-testid="stSidebarCollapsedControl"] svg {
-                color: #ffffff !important;
-                fill: #ffffff !important;
-            }
             .dashboard-hero {padding:1.25rem; border-radius:18px;}
             .dashboard-hero h1 {font-size:1.55rem;}
             .hero-mark {width:72px; height:72px; font-size:2rem; border-radius:18px;}
@@ -1504,7 +1438,7 @@ st.markdown(
     <div class="dashboard-hero">
       <div class="hero-content">
         <div class="hero-kicker">SMART SOILLESS CULTIVATION</div>
-        <h1>Soilless Nutri Master</h1>
+        <h1>Nutrient & Water Intelligence Dashboard</h1>
         <p>Design a balanced nutrient programme, estimate crop-stage water demand from location-based weather, and prepare precise Stock A and Stock B solutions.</p>
         <div class="feature-strip">
           <span class="feature-chip">🌦 Weather-linked ET₀</span>
@@ -1524,7 +1458,7 @@ with st.sidebar:
         """
         <div class="side-brand">
           <div class="side-logo">🌿</div>
-          <div><div class="side-brand-title">Soilless Nutri<br>Master</div>
+          <div><div class="side-brand-title">Soilless Crop<br>Intelligence</div>
           <div class="side-brand-sub">Decision-support dashboard</div></div>
         </div>
         <div class="side-kicker">CURRENT WORKFLOW</div>
@@ -2491,7 +2425,7 @@ elif wizard_step == 5:
 st.markdown(
     """
     <div class="dashboard-footer">
-      Soilless Nutri Master &nbsp;•&nbsp; Weather-aware water planning &nbsp;•&nbsp; Nutrient-balance decision support<br>
+      Soilless Crop Intelligence Dashboard &nbsp;•&nbsp; Weather-aware water planning &nbsp;•&nbsp; Nutrient-balance decision support<br>
       Planning estimates must be verified with source-water analysis, EC, pH and measured crop response.
     </div>
     """,
