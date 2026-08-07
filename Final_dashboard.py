@@ -1,3 +1,4 @@
+
 import math
 import json
 import hashlib
@@ -793,6 +794,117 @@ def apply_dashboard_theme():
         .dashboard-footer {
             margin-top:2rem; padding:1rem 0 .3rem; border-top:1px solid var(--line);
             text-align:center; color:#6d817a; font-size:.75rem;
+        }
+
+        /* Peacock-green theme: avoid a stark white canvas while preserving
+           strong black-on-light contrast throughout forms and results. */
+        :root {
+            --surface:#d6ece6;
+            --surface-soft:#c7e5de;
+            --field:#e3f2ee;
+            --page:#a7d4ca;
+            --line:#73afa4;
+        }
+        html, body,
+        .stApp,
+        [data-testid="stAppViewContainer"],
+        [data-testid="stMain"] {
+            background:linear-gradient(145deg,#95c9be 0%,#aed8cf 48%,#87beb3 100%) !important;
+        }
+        [data-testid="stHeader"] {
+            background:rgba(7,82,75,.96) !important;
+            border-bottom:1px solid rgba(223,246,240,.24);
+        }
+        .auth-shell {
+            background:linear-gradient(125deg,#c7e7df,#b8ded5 58%,#d2ebe5) !important;
+            border-color:#68aa9e !important;
+            box-shadow:0 16px 38px rgba(4,72,66,.20) !important;
+        }
+        .profile-form-guide,
+        .workspace-card,
+        .hero-mark,
+        .feature-chip,
+        .step-card,
+        [data-testid="stMetric"],
+        [data-testid="stExpander"] {
+            background:#d6ece6 !important;
+            border-color:#78b3a8 !important;
+        }
+        .workspace-card,
+        [data-testid="stMetric"] {
+            box-shadow:0 8px 22px rgba(5,79,71,.14) !important;
+        }
+        .dashboard-hero {
+            background:linear-gradient(115deg,#b6ddd4 0%,#c8e7e0 55%,#a8d4ca 100%) !important;
+            border-color:#5fa499 !important;
+            box-shadow:0 14px 34px rgba(4,72,66,.18) !important;
+        }
+        .project-count,
+        .step-card.done,
+        .page-heading,
+        [data-testid="stMain"] [data-baseweb="tab-list"] {
+            background:#c4e4dc !important;
+            border-color:#71afa4 !important;
+        }
+        .step-card.current {
+            background:linear-gradient(135deg,#bce5da,#b8dfe1) !important;
+            border-color:#087e76 !important;
+        }
+        .step-number,
+        .page-icon {
+            background:#aed8ce !important;
+        }
+        [data-testid="stMain"] div[data-baseweb="input"],
+        [data-testid="stMain"] div[data-baseweb="input"] > div,
+        [data-testid="stMain"] div[data-baseweb="base-input"],
+        [data-testid="stMain"] [data-testid="stTextInput"] input,
+        [data-testid="stMain"] [data-testid="stNumberInput"] input,
+        [data-testid="stMain"] [data-testid="stDateInput"] input,
+        [data-testid="stMain"] [data-testid="stTimeInput"] input,
+        [data-testid="stMain"] textarea,
+        [data-testid="stMain"] div[data-baseweb="select"] > div,
+        [data-testid="stMain"] [data-testid="stFileUploaderDropzone"],
+        [data-testid="stMain"] [data-testid="stTextInput"] button,
+        [data-testid="stMain"] [data-testid="stNumberInput"] button,
+        [data-testid="stMain"] [data-testid="stDateInput"] button,
+        [data-testid="stMain"] [data-testid="stTimeInput"] button {
+            background:#e3f2ee !important;
+            background-color:#e3f2ee !important;
+        }
+        [data-testid="stMain"] input:disabled,
+        [data-testid="stMain"] textarea:disabled {
+            background:#bddbd4 !important;
+        }
+        div[data-baseweb="popover"],
+        div[data-baseweb="popover"] ul,
+        div[data-baseweb="menu"],
+        [role="listbox"],
+        [role="option"] {
+            background:#e0f0ec !important;
+        }
+        [role="option"]:hover,
+        [role="option"][aria-selected="true"] {
+            background:#b9ded5 !important;
+        }
+        [data-testid="stMain"] .stButton > button,
+        [data-testid="stMain"] .stFormSubmitButton > button {
+            background:#d5ebe5 !important;
+            border-color:#4d9b8f !important;
+            color:#064f48 !important;
+        }
+        [data-testid="stMain"] .stButton > button p,
+        [data-testid="stMain"] .stFormSubmitButton > button p {
+            color:#064f48 !important;
+            -webkit-text-fill-color:#064f48 !important;
+        }
+        [data-testid="stMain"] .stButton > button[kind="primary"] p,
+        [data-testid="stMain"] .stFormSubmitButton > button[kind="primary"] p {
+            color:#ffffff !important;
+            -webkit-text-fill-color:#ffffff !important;
+        }
+        .dashboard-footer {
+            color:#173f3a !important;
+            border-color:#69a99e !important;
         }
 
         @media (max-width: 900px) {
