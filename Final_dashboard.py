@@ -304,11 +304,32 @@ def apply_dashboard_theme():
         .stApp {
             background:#ffffff;
         }
-        /* Keep Streamlit's header available because it owns the mobile
-           workflow/sidebar toggle, but remove its branding and action tools. */
+        /* Keep Streamlit's header because it owns the mobile sidebar opener,
+           but turn the otherwise empty strip into a compact branded app bar. */
         [data-testid="stHeader"] {
-            background: rgba(255,255,255,.94);
+            min-height:3.5rem !important;
+            height:3.5rem !important;
+            background:rgba(7,82,75,.97);
             backdrop-filter: blur(10px);
+            border-bottom:1px solid rgba(223,246,240,.24);
+            box-shadow:0 3px 12px rgba(3,52,47,.16);
+        }
+        [data-testid="stHeader"]::after {
+            content:"🌿  Soilless Nutri Master";
+            position:absolute;
+            left:50%; top:50%;
+            transform:translate(-50%,-50%);
+            width:max-content;
+            max-width:calc(100vw - 8rem);
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+            color:#ffffff;
+            font-size:.96rem;
+            font-weight:800;
+            letter-spacing:.01em;
+            pointer-events:none;
+            z-index:1;
         }
         [data-testid="stToolbar"],
         [data-testid="stToolbarActions"],
@@ -336,16 +357,41 @@ def apply_dashboard_theme():
             border-radius:10px !important;
             box-shadow:0 5px 14px rgba(11,93,75,.24) !important;
         }
+        /* Use the familiar three-line dashboard menu on phones. */
+        [data-testid="stSidebarCollapsedControl"] button svg {
+            display:none !important;
+        }
+        [data-testid="stSidebarCollapsedControl"] button::after {
+            content:"☰";
+            color:#ffffff;
+            font-size:1.35rem;
+            font-weight:800;
+            line-height:1;
+        }
 
         /* Hide Streamlit's footer and hosted-app badge without affecting the
            custom Soilless Nutri Master footer or workflow sidebar. */
         footer,
         [data-testid="stFooter"],
+        [data-testid="stAppCreatorAvatar"],
+        [data-testid="stHostedAppBadge"],
+        [data-testid="stViewerBadge"],
+        [data-testid*="viewerBadge"],
+        [data-testid*="ViewerBadge"],
+        [class*="viewerBadge"],
+        [class*="ViewerBadge"],
+        [class*="appCreatorAvatar"],
+        [class*="AppCreatorAvatar"],
+        [class*="creatorAvatar"],
+        [class*="CreatorAvatar"],
         [class^="viewerBadge_container"],
         [class*=" viewerBadge_container"],
-        iframe[title="streamlit_badge"] {
+        iframe[title="streamlit_badge"],
+        iframe[title*="badge" i] {
             display: none !important;
             visibility: hidden !important;
+            opacity:0 !important;
+            pointer-events:none !important;
         }
 
         html, body, [data-testid="stAppViewContainer"] {
@@ -443,6 +489,20 @@ def apply_dashboard_theme():
         }
         .profile-name {color:#fff; font-weight:800; font-size:.88rem;}
         .profile-email {color:#bfe7dc; font-size:.7rem; overflow-wrap:anywhere;}
+        .profile-app-card {
+            margin:1rem 0 0; padding:1rem 1.1rem; border-radius:15px;
+            background:#c4e4dc; border:1px solid #71afa4;
+            box-shadow:0 7px 20px rgba(5,79,71,.10);
+            color:#153a35;
+        }
+        .profile-app-card strong {color:#073f39;}
+        .profile-app-row {
+            display:flex; justify-content:space-between; gap:1rem;
+            padding:.44rem 0; border-bottom:1px solid rgba(7,82,75,.15);
+            font-size:.84rem;
+        }
+        .profile-app-row:last-child {border-bottom:0;}
+        .profile-app-value {font-weight:750; text-align:right; color:#075e55;}
         [data-testid="stSidebar"] .stButton > button {
             width:100%; color:#effffb; background:rgba(255,255,255,.10);
             border-color:rgba(255,255,255,.22);
@@ -2199,6 +2259,37 @@ def render_login_page():
                     st.rerun()
 
 
+def render_public_sidebar():
+    """Provide the same professional menu on the sign-in screen."""
+    with st.sidebar:
+        st.markdown(
+            """
+            <div class="side-brand">
+              <div class="side-logo">🌿</div>
+              <div><div class="side-brand-title">Soilless Nutri<br>Master</div>
+              <div class="side-brand-sub">Decision-support dashboard</div></div>
+            </div>
+            <div class="side-kicker">APP MENU</div>
+            <div class="profile-card">
+              <div class="profile-name">Welcome</div>
+              <div class="profile-email">Sign in or create a profile to manage projects.</div>
+            </div>
+            <div class="side-kicker">DASHBOARD FEATURES</div>
+            <ul class="side-list">
+              <li>Secure user profiles</li>
+              <li>Up to five saved projects</li>
+              <li>Crop-stage water scheduling</li>
+              <li>Nutrient and stock planning</li>
+              <li>Multi-format reporting</li>
+            </ul>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.expander("Developer & hosting"):
+            st.caption("Developer: Project team")
+            st.caption("Application engine: Streamlit")
+
+
 def reset_project_session(view="wizard"):
     auth_user = st.session_state.auth_user
     for key in list(st.session_state.keys()):
@@ -2360,6 +2451,24 @@ def render_profile_page():
                     )
                 st.success("Password changed successfully.")
 
+    st.markdown(
+        """
+        <div class="profile-app-card">
+          <strong>Application information</strong>
+          <div class="profile-app-row">
+            <span>Application</span><span class="profile-app-value">Soilless Nutri Master</span>
+          </div>
+          <div class="profile-app-row">
+            <span>Developer</span><span class="profile-app-value">Project team</span>
+          </div>
+          <div class="profile-app-row">
+            <span>Application engine</span><span class="profile-app-value">Streamlit</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # -----------------------------
 # UI
 # -----------------------------
@@ -2371,6 +2480,7 @@ initialise_database()
 apply_dashboard_theme()
 
 if "auth_user" not in st.session_state:
+    render_public_sidebar()
     render_login_page()
     st.stop()
 
@@ -2413,7 +2523,7 @@ with st.sidebar:
           <div><div class="side-brand-title">Soilless Nutri<br>Master</div>
           <div class="side-brand-sub">Decision-support dashboard</div></div>
         </div>
-        <div class="side-kicker">CURRENT WORKFLOW</div>
+        <div class="side-kicker">DASHBOARD MENU</div>
         """,
         unsafe_allow_html=True,
     )
