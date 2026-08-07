@@ -427,6 +427,52 @@ def apply_dashboard_theme():
         }
         .auth-shell h1 {margin:.25rem 0 .4rem; color:#fff;}
         .auth-shell p {margin:0; color:#dcfff6;}
+        .profile-form-guide {
+            margin:.45rem 0 .9rem; padding:.85rem 1rem; border-radius:13px;
+            background:#ffffff; border:1px solid #c9ddd6;
+            color:#1b1b1b; font-size:.84rem; line-height:1.55;
+            box-shadow:0 4px 14px rgba(20,71,59,.06);
+        }
+        .profile-form-guide strong {color:#000000;}
+
+        /* High-contrast sign-in/profile fields. Keep labels black and the
+           entry boxes white so every requested item is clear on mobile. */
+        [data-testid="stForm"] [data-testid="stWidgetLabel"] p,
+        [data-testid="stForm"] [data-testid="stTextInput"] label,
+        [data-testid="stForm"] [data-testid="stTextInput"] label p {
+            color:#000000 !important;
+            -webkit-text-fill-color:#000000 !important;
+            font-weight:750 !important;
+            opacity:1 !important;
+        }
+        [data-testid="stForm"] div[data-baseweb="input"],
+        [data-testid="stForm"] div[data-baseweb="input"] > div,
+        [data-testid="stForm"] [data-testid="stTextInput"] input {
+            background:#ffffff !important;
+        }
+        [data-testid="stForm"] div[data-baseweb="input"] {
+            border:1.5px solid #66736f !important;
+            border-radius:10px !important;
+            box-shadow:none !important;
+        }
+        [data-testid="stForm"] div[data-baseweb="input"]:focus-within {
+            border-color:#0b6e57 !important;
+            box-shadow:0 0 0 2px rgba(11,110,87,.16) !important;
+        }
+        [data-testid="stForm"] [data-testid="stTextInput"] input {
+            color:#000000 !important;
+            -webkit-text-fill-color:#000000 !important;
+            caret-color:#000000 !important;
+            opacity:1 !important;
+        }
+        [data-testid="stForm"] [data-testid="stTextInput"] input::placeholder {
+            color:#68736f !important;
+            -webkit-text-fill-color:#68736f !important;
+            opacity:1 !important;
+        }
+        [data-testid="stForm"] [data-testid="stTextInput"] button {
+            color:#1d2a26 !important;
+        }
         .workspace-card {
             min-height:185px; padding:1.15rem 1.2rem; border-radius:18px;
             background:#fff; border:1px solid var(--line);
@@ -1781,14 +1827,36 @@ def render_login_page():
                 st.error("Email address or password is incorrect.")
 
     with register_tab:
+        st.markdown(
+            """
+            <div class="profile-form-guide">
+              <strong>Create your profile by entering:</strong><br>
+              your full name, a valid email address, and a password containing
+              at least 8 characters. Enter the same password again to confirm it.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         with st.form("create_profile_form"):
-            display_name = st.text_input("Full name")
-            new_email = st.text_input("Email address", key="registration_email")
+            display_name = st.text_input(
+                "Full name", placeholder="Enter your full name"
+            )
+            new_email = st.text_input(
+                "Email address",
+                placeholder="Enter your email address",
+                key="registration_email",
+            )
             new_password = st.text_input(
-                "Create password", type="password", key="registration_password"
+                "Create password",
+                type="password",
+                placeholder="Minimum 8 characters",
+                key="registration_password",
             )
             confirm_password = st.text_input(
-                "Confirm password", type="password", key="registration_confirmation"
+                "Confirm password",
+                type="password",
+                placeholder="Re-enter the same password",
+                key="registration_confirmation",
             )
             registered = st.form_submit_button(
                 "Create profile", type="primary", use_container_width=True
